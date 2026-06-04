@@ -1,6 +1,5 @@
 # Ignore nextflow cache and logs
 ./nextflow*
-work/ 
 .nextflow*
 .vscode/
 results/

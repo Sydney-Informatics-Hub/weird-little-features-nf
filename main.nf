@@ -1,128 +1,164 @@
 #!/usr/bin/env nextflow
 
-/// To use DSL-2 will need to include this
-nextflow.enable.dsl=2
-
 // =================================================================
-// main.nf is the pipeline script for a nextflow pipeline
-// Should contain the following sections:
-	// Process definitions
-    // Channel definitions
-    // Workflow structure
-	// Workflow summary logs 
-
-// Examples are included for each section. Remove them and replace
-// with project-specific code. For more information see:
-// https://www.nextflow.io/docs/latest/index.html.
+//
+// Weird Little Features - nf
+// Repeat expansion, MEI, and de novo repeat discovery from
+// short-read Illumina BAM files (human and non-human mammals)
+//
+// Sydney Informatics Hub, University of Sydney
 //
 // ===================================================================
 
-// Import processes or subworkflows to be run in the workflow
-// Each of these is a separate .nf script saved in modules/ directory
-// See https://training.nextflow.io/basic_training/modules/#importing-modules 
-include { check_input } from './modules/check_input'
-include { group_samples } from './modules/group_samples'
-include { generate_report } from './modules/generate_report' 
+include { REPEAT_EXPANSIONS } from './subworkflows/repeat_expansions'
+include { MEI_DETECTION     } from './subworkflows/mei_detection'
+include { DENOVO_REPEATS    } from './subworkflows/denovo_repeats'
 
-// Print a header for your pipeline 
-log.info """\
+def printInfo() {
+    log.info """\
 
-=======================================================================================
-Name of the pipeline - nf 
-=======================================================================================
+    =======================================================================================
+    Weird Little Features - nf
+    =======================================================================================
 
-Created by <YOUR NAME> 
-Find documentation @ https://sydney-informatics-hub.github.io/Nextflow_DSL2_template_guide/
-Cite this pipeline @ INSERT DOI
+    Created by Georgie Samaha, Sydney Informatics Hub, University of Sydney
+    Find documentation @ https://sydney-informatics-hub.github.io/Nextflow_DSL2_template_guide/
+    Cite this pipeline @ INSERT DOI
 
-=======================================================================================
-Workflow run parameters 
-=======================================================================================
-input       : ${params.input}
-results     : ${params.outdir}
-workDir     : ${workflow.workDir}
-=======================================================================================
+    =======================================================================================
+    Workflow run parameters
+    =======================================================================================
+    input           : ${params.input}
+    ref             : ${params.ref}
+    catalog         : ${params.catalog  ?: 'not provided — catalog-dependent steps skipped for non-human samples'}
+    ref_str         : ${params.ref_str  ?: 'not provided — GangSTR will be skipped'}
+    xtea_lib        : ${params.xtea_lib ?: 'not provided — xTEa will be skipped'}
+    vep_cache       : ${params.vep_cache  ?: 'not provided — VEP annotation skipped'}
+    snpeff_db       : ${params.snpeff_db  ?: 'not provided — SnpEff annotation skipped'}
+    outdir          : ${params.outdir}
+    workDir         : ${workflow.workDir}
+    =======================================================================================
 
-"""
-
-/// Help function 
-// This is an example of how to set out the help function that 
-// will be run if run command is incorrect or missing. 
+    """.stripIndent()
+}
 
 def helpMessage() {
     log.info"""
-  Usage:  nextflow run main.nf --input <samples.tsv> 
+    Usage:  nextflow run main.nf --input samplesheet.csv --ref /path/to/ref.fa
 
-  Required Arguments:
+    Required Arguments:
 
-  --input		Specify full path and name of sample input file.
+    --input         Path to samplesheet CSV.
+                    Columns: sampleID,bam,bai,species,is_human
+                    is_human must be true or false.
 
-  Optional Arguments:
+    --ref           Path to reference genome FASTA.
+                    A samtools .fai index must exist alongside it.
 
-  --outdir	Specify path to output directory. 
-	
-""".stripIndent()
+    Optional Arguments:
+
+    --catalog       Path to ExpansionHunter variant catalog (JSON) and/or GangSTR
+                    STR region file (TSV/BED) — see --ref_str for GangSTR.
+                    Required for repeat expansion genotyping. No standard catalog
+                    exists for non-human species; provide a custom one or these
+                    steps will be skipped.
+
+    --ref_str       Path to GangSTR STR region file. GangSTR ships human reference
+                    sets (hg38/hg19). For non-human genomes, supply a custom file.
+
+    --xtea_lib      Path to xTEa repeat library directory. The bundled library is
+                    human-specific (LINE1, Alu, SVA, ERV). Non-human runs require
+                    a custom library or xTEa will be skipped.
+
+    --vep_cache     Path to VEP cache directory. Used for human samples only.
+
+    --snpeff_db     SnpEff database name for non-human annotation
+                    (e.g. 'GRCm39.105').
+
+    --scratch       Path to scratch/temp directory on Lustre.
+                    Defaults to \$TMPDIR or /tmp.
+
+    --outdir        Output directory (default: results).
+
+    """.stripIndent()
 }
 
-// Define workflow structure. Include some input/runtime tests here.
-// See https://www.nextflow.io/docs/latest/dsl2.html?highlight=workflow#workflow
 workflow {
 
-// Show help message if --help is run or (||) a required parameter (input) is not provided
+    printInfo()
 
-if ( params.help || params.input == false ){   
-// Invoke the help function above and exit
-	helpMessage()
-	exit 1
-	// consider adding some extra contigencies here.
-	// could validate path of all input files in list?
-	// could validate indexes for reference exist?
+    if ( params.help || !params.input || !params.ref ) {
+        helpMessage()
+        exit 1
+    }
 
-// If none of the above are a problem, then run the workflow
-} else {
-	
-	// DEFINE CHANNELS 
-	// See https://www.nextflow.io/docs/latest/channel.html#channels
-	// See https://training.nextflow.io/basic_training/channels/ 
+    // ---------------------------------------------------------------
+    // INPUT — parse samplesheet and build meta map
+    // Columns: sampleID, bam, bai, species, is_human
+    // ---------------------------------------------------------------
+    ch_input = channel
+        .fromPath( params.input, checkIfExists: true )
+        .splitCsv( header: true )
+        .map { row ->
+            assert row.sampleID         : "samplesheet: missing sampleID"
+            assert row.bam              : "samplesheet: missing bam for ${row.sampleID}"
+            assert row.bai              : "samplesheet: missing bai for ${row.sampleID}"
+            assert row.species          : "samplesheet: missing species for ${row.sampleID}"
+            assert row.is_human != null && row.is_human != '' :
+                "samplesheet: missing is_human for ${row.sampleID} — must be true or false"
 
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - VALIDATE INPUT SAMPLES 
-	check_input(Channel.fromPath(params.input, checkIfExists: true))
+            def meta = [
+                id       : row.sampleID,
+                species  : row.species,
+                is_human : row.is_human.toBoolean()
+            ]
 
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - EXAMPLE PROCESS - SPLIT SAMPLESHEET DEPENDING ON SEQUENCING PLATFORM
-	// See https://training.nextflow.io/basic_training/processes/#inputs 
-	// Define the input channel for this process
-	group_samples_in = check_input.out.checked_samplesheet
+            tuple(
+                meta,
+                file( row.bam, checkIfExists: true ),
+                file( row.bai, checkIfExists: true )
+            )
+        }
 
-	// Run the process with its input channel
-	group_samples(group_samples_in)
-	
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - EXAMPLE PROCESS - SUMMARISE COHORT FROM SAMPLESHEETS
-	// Define the input channel for this process using Nextflow mix operator and some groovy (the use of 'map')
-	// See: https://www.nextflow.io/docs/latest/operator.html
-	generate_report_in = group_samples.out.illumina
-                     .map { file -> tuple(file, 'Illumina') }
-                     .mix(group_samples.out.pacbio
-                          .map { file -> tuple(file, 'PacBio') })
-	
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - Run the process with its input channel
-	generate_report(generate_report_in)
-}}
+    // Log routing counts once channels are materialised
+    ch_input
+        .filter { meta, _bam, _bai -> meta.is_human }
+        .count()
+        .subscribe { n -> log.info "Routing: ${n} human sample(s) — full annotation stack" }
 
-// Print workflow execution summary 
-workflow.onComplete {
-summary = """
-=======================================================================================
-Workflow execution summary
-=======================================================================================
+    ch_input
+        .filter { meta, _bam, _bai -> !meta.is_human }
+        .count()
+        .subscribe { n -> log.info "Routing: ${n} non-human sample(s) — catalog/VEP steps replaced or skipped" }
 
-Duration    : ${workflow.duration}
-Success     : ${workflow.success}
-workDir     : ${workflow.workDir}
-Exit status : ${workflow.exitStatus}
-results     : ${params.outdir}
+    // ---------------------------------------------------------------
+    // SUBWORKFLOWS — run in parallel, all receive the full channel;
+    // species routing happens inside each subworkflow
+    // ---------------------------------------------------------------
+    REPEAT_EXPANSIONS( ch_input )
+    MEI_DETECTION( ch_input )
+    DENOVO_REPEATS( ch_input )
 
-=======================================================================================
-  """
-println summary
+    // Annotation subworkflow will consume outputs from all three —
+    // to be wired once annotation modules are implemented.
 
+    // ---------------------------------------------------------------
+    // SUMMARY
+    // ---------------------------------------------------------------
+    workflow.onComplete = {
+        def summary = """
+        =======================================================================================
+        Workflow execution summary
+        =======================================================================================
+
+        Duration    : ${workflow.duration}
+        Success     : ${workflow.success}
+        workDir     : ${workflow.workDir}
+        Exit status : ${workflow.exitStatus}
+        results     : ${params.outdir}
+
+        =======================================================================================
+        """
+        println summary.replaceAll(/(^|\n)\s+/, '\n')
+    }
 }

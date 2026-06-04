@@ -1,0 +1,8 @@
+[
+  {
+    "LocusId": "TEST_STR_1",
+    "LocusStructure": "(CAG)*",
+    "ReferenceRegion": "chr21_subset_test:300000-300030",
+    "VariantType": "Repeat"
+  }
+]
