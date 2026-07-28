@@ -10,8 +10,10 @@
 //
 // ===================================================================
 
+include { SAMTOOLS_FLAGSTAT } from './modules/samtools_flagstat'
 include { SEX_CHECK         } from './subworkflows/sex_check'
 include { REPEAT_EXPANSIONS } from './subworkflows/repeat_expansions'
+include { MULTIQC           } from './modules/multiqc'
 
 def printInfo() {
     log.info """\
@@ -29,8 +31,8 @@ def printInfo() {
     =======================================================================================
     input           : ${params.input}
     ref             : ${params.ref}
-    catalog         : ${params.catalog  ?: 'not provided — catalog-dependent steps skipped for non-human samples'}
-    ref_str         : ${params.ref_str  ?: 'not provided — GangSTR will be skipped'}
+    eh_catalog      : ${params.catalog}
+    ref_str         : ${params.ref_str  ?: 'not provided, GangSTR will be skipped'}
     sexcheck_method : ${params.sexcheck_method}
     outdir          : ${params.outdir}
     workDir         : ${workflow.workDir}
@@ -116,11 +118,25 @@ workflow {
 
     // ---------------------------------------------------------------
     // SUBWORKFLOWS
-    // SEX_CHECK resolves meta.sex for every sample before any
-    // repeat-expansion module runs.
+    // SAMTOOLS_FLAGSTAT is basic BAM QC, independent of sex check/genotyping.
+    // SEX_CHECK resolves meta.sex for every sample before other modules.
     // ---------------------------------------------------------------
+    SAMTOOLS_FLAGSTAT( ch_input )
     SEX_CHECK( ch_input )
     REPEAT_EXPANSIONS( SEX_CHECK.out.bam )
+
+    // ---------------------------------------------------------------
+    // MULTIQC — summary stats report from BAM QC, sex check, and
+    // bcftools stats across all repeat expansion VCFs
+    // ---------------------------------------------------------------
+    ch_multiqc_files = SAMTOOLS_FLAGSTAT.out.flagstat
+        .mix(
+            SEX_CHECK.out.samplegender_tsv,
+            REPEAT_EXPANSIONS.out.stats
+        )
+        .collect()
+
+    MULTIQC( ch_multiqc_files )
 
     // ---------------------------------------------------------------
     // SUMMARY
@@ -135,7 +151,7 @@ workflow {
         Success     : ${workflow.success}
         workDir     : ${workflow.workDir}
         Exit status : ${workflow.exitStatus}
-        results     : ${params.outdir}
+        Results     : ${params.outdir}
 
         =======================================================================================
         """
