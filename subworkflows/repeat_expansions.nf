@@ -3,13 +3,7 @@
 // Tools:
 //   ExpansionHunter — catalog-based STR genotyping  (skipped if --catalog absent)
 //   GangSTR         — STR genotyping from region set (skipped if --ref_str absent)
-//   Stranger        — pathogenicity annotation       (human samples only)
-//
-// Species routing:
-//   Stranger is filtered to is_human == true; non-human VCFs pass through unannotated.
-//   ExpansionHunter and GangSTR run on all samples when a catalog/region file is
-//   provided, but no standard catalog exists for non-human genomes — supply a custom
-//   one via --catalog / --ref_str or those tools will be skipped entirely.
+//   Stranger        — pathogenicity annotation, run on all samples (human-only database)
 
 include { EXPANSIONHUNTER } from '../modules/expansionhunter'
 include { GANGSTR          } from '../modules/gangstr'
@@ -37,12 +31,7 @@ workflow REPEAT_EXPANSIONS {
         EXPANSIONHUNTER( ch_bam, ch_ref, ch_ref_fai, ch_catalog )
         ch_eh_vcf = EXPANSIONHUNTER.out.vcf
 
-        // Stranger annotates against a human-only disease database.
-        // Non-human samples are excluded here — their EH VCFs are still
-        // emitted via ch_eh_vcf for downstream use (e.g. custom annotation).
-        STRANGER(
-            ch_eh_vcf.filter { meta, _vcf -> meta.is_human }
-        )
+        STRANGER( ch_eh_vcf )
         ch_stranger_vcf = STRANGER.out.vcf
     } else {
         log.warn "REPEAT_EXPANSIONS: --catalog not provided — ExpansionHunter and Stranger will be skipped. " +
@@ -63,7 +52,7 @@ workflow REPEAT_EXPANSIONS {
     }
 
     emit:
-    eh_vcf       = ch_eh_vcf        // tuple val(meta), path(vcf) — all species
-    gangstr_vcf  = ch_gangstr_vcf   // tuple val(meta), path(vcf) — all species
-    stranger_vcf = ch_stranger_vcf  // tuple val(meta), path(vcf) — human only
+    eh_vcf       = ch_eh_vcf        // tuple val(meta), path(vcf)
+    gangstr_vcf  = ch_gangstr_vcf   // tuple val(meta), path(vcf)
+    stranger_vcf = ch_stranger_vcf  // tuple val(meta), path(vcf)
 }
