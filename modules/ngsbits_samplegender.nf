@@ -27,7 +27,7 @@ process NGSBITS_SAMPLEGENDER {
 
     script:
     def args = task.ext.args ?: ''
-    def prefix = task.ext.prefix ?: "${meta.id}"
+    def prefix = task.ext.prefix ?: "${meta.id}_ngsbits_sex"
     def ref = fasta ? "-ref ${fasta}" : ""
     """
     SampleGender \\
@@ -39,7 +39,7 @@ process NGSBITS_SAMPLEGENDER {
     """
 
     stub:
-    def prefix = task.ext.prefix ?: "${meta.id}"
+    def prefix = task.ext.prefix ?: "${meta.id}_ngsbits_sex"
     """
     touch ${prefix}.tsv
     """
