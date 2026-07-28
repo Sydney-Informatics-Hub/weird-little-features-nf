@@ -10,9 +10,8 @@
 //
 // ===================================================================
 
+include { SEX_CHECK         } from './subworkflows/sex_check'
 include { REPEAT_EXPANSIONS } from './subworkflows/repeat_expansions'
-include { MEI_DETECTION     } from './subworkflows/mei_detection'
-include { DENOVO_REPEATS    } from './subworkflows/denovo_repeats'
 
 def printInfo() {
     log.info """\
@@ -32,9 +31,7 @@ def printInfo() {
     ref             : ${params.ref}
     catalog         : ${params.catalog  ?: 'not provided — catalog-dependent steps skipped for non-human samples'}
     ref_str         : ${params.ref_str  ?: 'not provided — GangSTR will be skipped'}
-    xtea_lib        : ${params.xtea_lib ?: 'not provided — xTEa will be skipped'}
-    vep_cache       : ${params.vep_cache  ?: 'not provided — VEP annotation skipped'}
-    snpeff_db       : ${params.snpeff_db  ?: 'not provided — SnpEff annotation skipped'}
+    sexcheck_method : ${params.sexcheck_method}
     outdir          : ${params.outdir}
     workDir         : ${workflow.workDir}
     =======================================================================================
@@ -44,18 +41,20 @@ def printInfo() {
 
 def helpMessage() {
     log.info"""
-    Usage:  nextflow run main.nf --input samplesheet.csv --ref /path/to/ref.fa
+    Usage:  nextflow run main.nf --input samplesheet.csv --ref /path/to/ref.fa --catalog /path/to/catalog.json
 
     Required Arguments:
 
     --input         Path to samplesheet CSV.
-                    Columns: sampleID,bam,bai,species,is_human
-                    is_human must be true or false.
+                    Columns: sampleID,bam,sex
+                    The .bai index is located automatically next to each BAM
+                    (as <bam>.bai or <bam base>.bai) — do not include it.
+                    sex is optional (male/female, M/F, XX/XY). If missing or
+                    unrecognised, it's inferred via ngs-bits SampleGender
+                    before any repeat expansion module runs.
 
     --ref           Path to reference genome FASTA.
                     A samtools .fai index must exist alongside it.
-
-    Optional Arguments:
 
     --catalog       Path to ExpansionHunter variant catalog (JSON) and/or GangSTR
                     STR region file (TSV/BED) — see --ref_str for GangSTR.
@@ -63,22 +62,13 @@ def helpMessage() {
                     exists for non-human species; provide a custom one or these
                     steps will be skipped.
 
-    --ref_str       Path to GangSTR STR region file. GangSTR ships human reference
-                    sets (hg38/hg19). For non-human genomes, supply a custom file.
-
-    --xtea_lib      Path to xTEa repeat library directory. The bundled library is
-                    human-specific (LINE1, Alu, SVA, ERV). Non-human runs require
-                    a custom library or xTEa will be skipped.
-
-    --vep_cache     Path to VEP cache directory. Used for human samples only.
-
-    --snpeff_db     SnpEff database name for non-human annotation
-                    (e.g. 'GRCm39.105').
-
-    --scratch       Path to scratch/temp directory on Lustre.
-                    Defaults to \$TMPDIR or /tmp.
+    Optional Arguments:
 
     --outdir        Output directory (default: results).
+
+    --sexcheck_method  Method passed to ngs-bits SampleGender for samples
+                    with no usable sex in the samplesheet (default: xy).
+                    One of: xy, hetx, cnv — see ngs-bits documentation.
 
     """.stripIndent()
 }
@@ -87,60 +77,50 @@ workflow {
 
     printInfo()
 
-    if ( params.help || !params.input || !params.ref ) {
+    if ( params.help || !params.input || !params.ref || !params.catalog ) {
         helpMessage()
         exit 1
     }
 
     // ---------------------------------------------------------------
     // INPUT — parse samplesheet and build meta map
-    // Columns: sampleID, bam, bai, species, is_human
+    // Columns: sampleID, bam, sex (optional)
+    // The .bai index is not read from the samplesheet — it's located
+    // automatically next to each BAM (as <bam>.bai or <bam base>.bai).
     // ---------------------------------------------------------------
     ch_input = channel
         .fromPath( params.input, checkIfExists: true )
         .splitCsv( header: true )
         .map { row ->
-            assert row.sampleID         : "samplesheet: missing sampleID"
-            assert row.bam              : "samplesheet: missing bam for ${row.sampleID}"
-            assert row.bai              : "samplesheet: missing bai for ${row.sampleID}"
-            assert row.species          : "samplesheet: missing species for ${row.sampleID}"
-            assert row.is_human != null && row.is_human != '' :
-                "samplesheet: missing is_human for ${row.sampleID} — must be true or false"
+            assert row.sampleID : "samplesheet: missing sampleID"
+            assert row.bam      : "samplesheet: missing bam for ${row.sampleID}"
+
+            def bam = file( row.bam, checkIfExists: true )
+            def bai = file( "${bam}.bai" )
+
+            if ( !bai.exists() ) {
+                bai = file( bam.toString().replaceAll(/\.bam$/, '.bai') )
+            }
+            if ( !bai.exists() ) {
+                error "samplesheet: could not find a .bai index for ${row.sampleID} — " +
+                      "expected ${bam}.bai or ${bam.toString().replaceAll(/\.bam$/, '.bai')}"
+            }
 
             def meta = [
-                id       : row.sampleID,
-                species  : row.species,
-                is_human : row.is_human.toBoolean()
+                id  : row.sampleID,
+                sex : row.sex?.trim() ?: null
             ]
 
-            tuple(
-                meta,
-                file( row.bam, checkIfExists: true ),
-                file( row.bai, checkIfExists: true )
-            )
+            tuple( meta, bam, bai )
         }
 
-    // Log routing counts once channels are materialised
-    ch_input
-        .filter { meta, _bam, _bai -> meta.is_human }
-        .count()
-        .subscribe { n -> log.info "Routing: ${n} human sample(s) — full annotation stack" }
-
-    ch_input
-        .filter { meta, _bam, _bai -> !meta.is_human }
-        .count()
-        .subscribe { n -> log.info "Routing: ${n} non-human sample(s) — catalog/VEP steps replaced or skipped" }
-
     // ---------------------------------------------------------------
-    // SUBWORKFLOWS — run in parallel, all receive the full channel;
-    // species routing happens inside each subworkflow
+    // SUBWORKFLOWS
+    // SEX_CHECK resolves meta.sex for every sample before any
+    // repeat-expansion module runs.
     // ---------------------------------------------------------------
-    REPEAT_EXPANSIONS( ch_input )
-    MEI_DETECTION( ch_input )
-    DENOVO_REPEATS( ch_input )
-
-    // Annotation subworkflow will consume outputs from all three —
-    // to be wired once annotation modules are implemented.
+    SEX_CHECK( ch_input )
+    REPEAT_EXPANSIONS( SEX_CHECK.out.bam )
 
     // ---------------------------------------------------------------
     // SUMMARY
