@@ -71,5 +71,6 @@ workflow SEX_CHECK {
         .map { _id, meta, bam, bai, sex -> tuple( meta + [ sex: sex ], bam, bai ) }
 
     emit:
-    bam = ch_known.mix( ch_resolved )  // tuple val(meta), path(bam), path(bai) — meta.sex always 'male' or 'female'
+    bam            = ch_known.mix( ch_resolved )        // tuple val(meta), path(bam), path(bai) — meta.sex always 'male' or 'female'
+    samplegender_tsv = NGSBITS_SAMPLEGENDER.out.tsv.map { _meta, tsv -> tsv }  // path(*_ngsbits_sex.tsv) — for MultiQC
 }
