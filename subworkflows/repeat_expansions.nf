@@ -3,11 +3,13 @@
 // Tools:
 //   ExpansionHunter — catalog-based STR genotyping  (skipped if --catalog absent)
 //   GangSTR         — STR genotyping from region set (skipped if --ref_str absent)
+//   DumpSTR         — QC-filters GangSTR calls down to expansion candidates
 //   Stranger        — pathogenicity annotation, run on all samples (human-only database)
 
 include { EXPANSIONHUNTER            } from '../modules/expansionhunter'
 include { GANGSTR                    } from '../modules/gangstr'
 include { GANGSTR_CONCAT             } from '../modules/gangstr_concat'
+include { DUMPSTR                    } from '../modules/dumpstr'
 include { VALIDATE_STRANGER_CATALOG  } from '../modules/validate_stranger_catalog'
 include { CONVERT_STRANGER_CATALOG   } from '../modules/convert_stranger_catalog'
 include { STRANGER                   } from '../modules/stranger'
@@ -75,7 +77,10 @@ workflow REPEAT_EXPANSIONS {
 
         GANGSTR( ch_bam.combine(ch_chroms), ch_ref, ch_ref_fai, ch_ref_str )
         GANGSTR_CONCAT( GANGSTR.out.vcf.groupTuple() )
-        ch_gangstr_vcf = GANGSTR_CONCAT.out.vcf
+
+        // TRTools dumpSTR "Level 1" QC filters — see modules/dumpstr.nf
+        DUMPSTR( GANGSTR_CONCAT.out.vcf )
+        ch_gangstr_vcf = DUMPSTR.out.vcf
     } else {
         log.warn "REPEAT_EXPANSIONS: --ref_str not provided — GangSTR will be skipped. " +
                  "GangSTR ships human STR sets (hg38/hg19) only; provide a custom TSV/BED for non-human genomes."
@@ -88,7 +93,7 @@ workflow REPEAT_EXPANSIONS {
 
     emit:
     eh_vcf       = ch_eh_vcf                // tuple val(meta), path(vcf)
-    gangstr_vcf  = ch_gangstr_vcf           // tuple val(meta), path(vcf)
+    gangstr_vcf  = ch_gangstr_vcf           // tuple val(meta), path(vcf) — DumpSTR-filtered candidates
     stranger_vcf = ch_stranger_vcf          // tuple val(meta), path(vcf)
     stats        = BCFTOOLS_STATS.out.stats // path(stats)
 }
