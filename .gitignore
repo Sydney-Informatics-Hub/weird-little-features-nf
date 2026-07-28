@@ -9,3 +9,4 @@ bin/*.o
 bin/*.e
 singularity/
 assets/*
+test_data/*
