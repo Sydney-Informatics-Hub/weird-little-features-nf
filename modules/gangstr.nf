@@ -1,15 +1,9 @@
 // GangSTR: STR genotyping from BAM using a region file
-//
-// ⚠️  GangSTR ships human reference STR sets (hg38, hg19) only.
-//     Non-human genomes require a custom --ref_str TSV/BED.
-//     This process is only called when --ref_str is provided.
-//
-// Container tag: verify against quay.io/biocontainers/gangstr before running.
 
 process GANGSTR {
     tag "${meta.id}"
     publishDir "${params.outdir}/repeat_expansions/gangstr/${meta.id}", mode: 'copy'
-    container 'quay.io/biocontainers/gangstr:2.5.0--hd03093a_0'
+    container 'quay.io/biocontainers/gangstr:2.5.0--h7337834_10'
     label 'medium_job'
 
     input:

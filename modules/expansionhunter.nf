@@ -1,15 +1,9 @@
 // ExpansionHunter: catalog-based STR genotyping from BAM
-//
-// ⚠️  No standard variant catalog exists for non-human species.
-//     This process is only called when --catalog is provided.
-//     Provide a custom catalog JSON for non-human genomes.
-//
-// Container tag: verify against quay.io/biocontainers/expansionhunter before running.
 
 process EXPANSIONHUNTER {
     tag "${meta.id}"
     publishDir "${params.outdir}/repeat_expansions/expansionhunter/${meta.id}", mode: 'copy'
-    container 'quay.io/biocontainers/expansionhunter:5.0.0--h9ee0642_1'
+    container 'quay.io/biocontainers/expansionhunter:5.0.0--hc26b3af_5'
     label 'medium_job'
 
     input:
@@ -28,6 +22,7 @@ process EXPANSIONHUNTER {
         --reads ${bam} \\
         --reference ${ref} \\
         --variant-catalog ${catalog} \\
+        --sex ${meta.sex} \\
         --output-prefix ${meta.id}.eh \\
         --threads ${task.cpus}
     """
