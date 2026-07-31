@@ -1,128 +1,186 @@
 #!/usr/bin/env nextflow
 
-/// To use DSL-2 will need to include this
-nextflow.enable.dsl=2
-
 // =================================================================
-// main.nf is the pipeline script for a nextflow pipeline
-// Should contain the following sections:
-	// Process definitions
-    // Channel definitions
-    // Workflow structure
-	// Workflow summary logs 
-
-// Examples are included for each section. Remove them and replace
-// with project-specific code. For more information see:
-// https://www.nextflow.io/docs/latest/index.html.
+//
+// Weird Little Features - nf
+// Repeat expansion, MEI, and de novo repeat discovery from
+// short-read Illumina BAM files (human and non-human mammals)
+//
+// Sydney Informatics Hub, University of Sydney
 //
 // ===================================================================
 
-// Import processes or subworkflows to be run in the workflow
-// Each of these is a separate .nf script saved in modules/ directory
-// See https://training.nextflow.io/basic_training/modules/#importing-modules 
-include { check_input } from './modules/check_input'
-include { group_samples } from './modules/group_samples'
-include { generate_report } from './modules/generate_report' 
+include { SAMTOOLS_FLAGSTAT } from './modules/samtools_flagstat'
+include { SEX_CHECK         } from './subworkflows/sex_check'
+include { REPEAT_EXPANSIONS } from './subworkflows/repeat_expansions'
+include { MULTIQC           } from './modules/multiqc'
 
-// Print a header for your pipeline 
-log.info """\
+def printInfo() {
+    log.info """\
 
-=======================================================================================
-Name of the pipeline - nf 
-=======================================================================================
+    =======================================================================================
+    Weird Little Features - nf
+    =======================================================================================
 
-Created by <YOUR NAME> 
-Find documentation @ https://sydney-informatics-hub.github.io/Nextflow_DSL2_template_guide/
-Cite this pipeline @ INSERT DOI
+    Created by Georgie Samaha, Sydney Informatics Hub, University of Sydney
+    Find documentation @ https://sydney-informatics-hub.github.io/Nextflow_DSL2_template_guide/
+    Cite this pipeline @ INSERT DOI
 
-=======================================================================================
-Workflow run parameters 
-=======================================================================================
-input       : ${params.input}
-results     : ${params.outdir}
-workDir     : ${workflow.workDir}
-=======================================================================================
+    =======================================================================================
+    Workflow run parameters
+    =======================================================================================
+    input           : ${params.input}
+    ref             : ${params.ref}
+    eh_catalog      : ${params.catalog}
+    ref_str         : ${params.ref_str  ?: 'not provided, GangSTR will be skipped'}
+    sexcheck_method : ${params.sexcheck_method}
+    outdir          : ${params.outdir}
+    workDir         : ${workflow.workDir}
+    =======================================================================================
 
-"""
-
-/// Help function 
-// This is an example of how to set out the help function that 
-// will be run if run command is incorrect or missing. 
+    """.stripIndent()
+}
 
 def helpMessage() {
     log.info"""
-  Usage:  nextflow run main.nf --input <samples.tsv> 
+    Usage:  nextflow run main.nf --input samplesheet.csv --ref /path/to/ref.fa --catalog /path/to/catalog.json
 
-  Required Arguments:
+    Required Arguments:
 
-  --input		Specify full path and name of sample input file.
+    --input         Path to samplesheet CSV.
+                    Columns: sampleID,bam,sex
+                    The .bai index is located automatically next to each BAM
+                    (as <bam>.bai or <bam base>.bai) — do not include it.
+                    sex is optional (male/female, M/F, XX/XY). If missing or
+                    unrecognised, it's inferred via ngs-bits SampleGender
+                    before any repeat expansion module runs.
 
-  Optional Arguments:
+    --ref           Path to reference genome FASTA.
+                    A samtools .fai index must exist alongside it.
 
-  --outdir	Specify path to output directory. 
-	
-""".stripIndent()
+    --catalog       Path to ExpansionHunter variant catalog (JSON) and/or GangSTR
+                    STR region file (TSV/BED) — see --ref_str for GangSTR.
+                    Required for repeat expansion genotyping. No standard catalog
+                    exists for non-human species; provide a custom one or these
+                    steps will be skipped.
+
+    Optional Arguments:
+
+    --outdir        Output directory (default: results).
+
+    --sexcheck_method  Method passed to ngs-bits SampleGender for samples
+                    with no usable sex in the samplesheet (default: xy).
+                    One of: xy, hetx, cnv — see ngs-bits documentation.
+
+    """.stripIndent()
 }
 
-// Define workflow structure. Include some input/runtime tests here.
-// See https://www.nextflow.io/docs/latest/dsl2.html?highlight=workflow#workflow
 workflow {
 
-// Show help message if --help is run or (||) a required parameter (input) is not provided
+    printInfo()
 
-if ( params.help || params.input == false ){   
-// Invoke the help function above and exit
-	helpMessage()
-	exit 1
-	// consider adding some extra contigencies here.
-	// could validate path of all input files in list?
-	// could validate indexes for reference exist?
+    if ( params.help || !params.input || !params.ref || !params.catalog ) {
+        helpMessage()
+        exit 1
+    }
 
-// If none of the above are a problem, then run the workflow
-} else {
-	
-	// DEFINE CHANNELS 
-	// See https://www.nextflow.io/docs/latest/channel.html#channels
-	// See https://training.nextflow.io/basic_training/channels/ 
+    // ---------------------------------------------------------------
+    // INPUT — parse samplesheet and build meta map
+    // Columns: sampleID, bam, sex (optional)
+    // The .bai index is not read from the samplesheet — it's located
+    // automatically next to each BAM (as <bam>.bai or <bam base>.bai).
+    // ---------------------------------------------------------------
+    ch_input = channel
+        .fromPath( params.input, checkIfExists: true )
+        .splitCsv( header: true )
+        .map { row ->
+            assert row.sampleID : "samplesheet: missing sampleID"
+            assert row.bam      : "samplesheet: missing bam for ${row.sampleID}"
 
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - VALIDATE INPUT SAMPLES 
-	check_input(Channel.fromPath(params.input, checkIfExists: true))
+            def bam = file( row.bam, checkIfExists: true )
+            def bai = file( "${bam}.bai" )
 
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - EXAMPLE PROCESS - SPLIT SAMPLESHEET DEPENDING ON SEQUENCING PLATFORM
-	// See https://training.nextflow.io/basic_training/processes/#inputs 
-	// Define the input channel for this process
-	group_samples_in = check_input.out.checked_samplesheet
+            if ( !bai.exists() ) {
+                bai = file( bam.toString().replaceAll(/\.bam$/, '.bai') )
+            }
+            if ( !bai.exists() ) {
+                error "samplesheet: could not find a .bai index for ${row.sampleID} — " +
+                      "expected ${bam}.bai or ${bam.toString().replaceAll(/\.bam$/, '.bai')}"
+            }
 
-	// Run the process with its input channel
-	group_samples(group_samples_in)
-	
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - EXAMPLE PROCESS - SUMMARISE COHORT FROM SAMPLESHEETS
-	// Define the input channel for this process using Nextflow mix operator and some groovy (the use of 'map')
-	// See: https://www.nextflow.io/docs/latest/operator.html
-	generate_report_in = group_samples.out.illumina
-                     .map { file -> tuple(file, 'Illumina') }
-                     .mix(group_samples.out.pacbio
-                          .map { file -> tuple(file, 'PacBio') })
-	
-	// DEMO CODE: DELETE FOR YOUR OWN WORKFLOWS - Run the process with its input channel
-	generate_report(generate_report_in)
-}}
+            def meta = [
+                id  : row.sampleID,
+                sex : row.sex?.trim() ?: null
+            ]
 
-// Print workflow execution summary 
-workflow.onComplete {
-summary = """
-=======================================================================================
-Workflow execution summary
-=======================================================================================
+            tuple( meta, bam, bai )
+        }
 
-Duration    : ${workflow.duration}
-Success     : ${workflow.success}
-workDir     : ${workflow.workDir}
-Exit status : ${workflow.exitStatus}
-results     : ${params.outdir}
+    // ---------------------------------------------------------------
+    // SUBWORKFLOWS
+    // SAMTOOLS_FLAGSTAT is basic BAM QC, independent of sex check/genotyping.
+    // SEX_CHECK resolves meta.sex for every sample before other modules.
+    // ---------------------------------------------------------------
+    SAMTOOLS_FLAGSTAT( ch_input )
+    SEX_CHECK( ch_input )
+    REPEAT_EXPANSIONS( SEX_CHECK.out.bam )
 
-=======================================================================================
-  """
-println summary
+    // ---------------------------------------------------------------
+    // SOFTWARE VERSIONS — every process reports (process, tool, version)
+    // via `topic: versions`; collected here into one MultiQC custom_content
+    // table. .unique() collapses repeats from scattered processes (e.g.
+    // GangSTR runs once per chromosome per sample).
+    // ---------------------------------------------------------------
+    ch_versions_mqc = Channel.topic('versions')
+        .map { process, tool, version -> "${process}\t${tool}\t${version}" }
+        .unique()
+        .collectFile(
+            name: 'software_versions_mqc.tsv',
+            newLine: true,
+            sort: true,
+            seed: '''# id: 'software_versions'
+# section_name: 'Pipeline Software Versions'
+# description: 'Versions of every tool invoked by this pipeline, one row per process.'
+# plot_type: 'table'
+# pconfig:
+#     id: 'software_versions_table'
+#     title: 'Pipeline Software Versions'
+#     namespace: 'software_versions'
+Process\tTool\tVersion'''
+        )
 
+    // ---------------------------------------------------------------
+    // MULTIQC — summary stats report from BAM QC, sex check, and
+    // bcftools stats across all repeat expansion VCFs
+    // ---------------------------------------------------------------
+    ch_multiqc_files = SAMTOOLS_FLAGSTAT.out.flagstat
+        .mix(
+            SEX_CHECK.out.samplegender_tsv,
+            REPEAT_EXPANSIONS.out.stats,
+            REPEAT_EXPANSIONS.out.custom_qc,
+            ch_versions_mqc
+        )
+        .collect()
+
+    MULTIQC( ch_multiqc_files )
+
+    // ---------------------------------------------------------------
+    // SUMMARY
+    // ---------------------------------------------------------------
+    workflow.onComplete = {
+        def summary = """
+        =======================================================================================
+        Workflow execution summary
+        =======================================================================================
+
+        Duration    : ${workflow.duration}
+        Success     : ${workflow.success}
+        workDir     : ${workflow.workDir}
+        Exit status : ${workflow.exitStatus}
+        Results     : ${params.outdir}
+
+        =======================================================================================
+        """
+        println summary.replaceAll(/(^|\n)\s+/, '\n')
+    }
 }

@@ -1,26 +1,26 @@
 // Define the process
 process generate_report {
-	// Define directives 
-	// See: https://nextflow.io/docs/edge/process.html#processes
-	debug = false //turn to true to print command stdout to screen
-	tag "" 
-	publishDir "${params.outdir}/", mode: 'copy'
-  container '' 
+    // Define directives
+    // See: https://docs.seqera.io/nextflow/process#processes
+    tag "${id}"
+    publishDir "${params.outdir}/", mode: 'copy'
+    container ''
+    label 'small_job'
 
-	// Define input 
-	// See: https://www.nextflow.io/docs/latest/process.html#inputs
-	input:
-	path("")
+    // Define input
+    // See: https://docs.seqera.io/nextflow/process#inputs
+    input:
+    tuple val(id), path(infile)
 
-	// Define output(s)
-	// See: https://www.nextflow.io/docs/latest/process.html#outputs
-	output:
-	path("")
+    // Define output(s)
+    // See: https://docs.seqera.io/nextflow/process#outputs
+    output:
+    tuple val(id), path("${id}.output")
 
-	// Define code to execute 
-	// See: https://www.nextflow.io/docs/latest/process.html#script
-	script:
-	"""
-
-	"""
- }
+    // Define code to execute
+    // See: https://docs.seqera.io/nextflow/process#script
+    script:
+    """
+    cp ${infile} ${id}.output
+    """
+}
