@@ -14,7 +14,7 @@ process EXPANSIONHUNTER {
 
     output:
     tuple val(meta), path("${meta.id}.eh.vcf"),  emit: vcf
-    tuple val(meta), path("${meta.id}.eh.json"), emit: json
+    //tuple val(meta), path("${meta.id}.eh.json"), emit: json
 
     script:
     """
