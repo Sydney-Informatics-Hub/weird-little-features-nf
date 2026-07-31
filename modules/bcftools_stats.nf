@@ -15,6 +15,7 @@ process BCFTOOLS_STATS {
 
     output:
     path("*.stats"), emit: stats
+    tuple val("${task.process}"), val('bcftools'), eval("bcftools --version 2>&1 | head -1 | sed 's/^bcftools //'"), topic: versions, emit: versions_bcftools
 
     script:
     def prefix = vcf.name.replaceAll(/\.vcf(\.gz)?$/, '')

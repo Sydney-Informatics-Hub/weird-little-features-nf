@@ -17,6 +17,8 @@ process GANGSTR {
 
     output:
     tuple val(meta), path("${meta.id}.${chrom}.gangstr.vcf"), emit: vcf
+    tuple val("${task.process}"), val('gangstr'), eval("GangSTR --version 2>&1 | head -1"), topic: versions, emit: versions_gangstr
+
 
     script:
     """

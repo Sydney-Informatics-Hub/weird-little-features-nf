@@ -19,7 +19,8 @@ process NGSBITS_SAMPLEGENDER {
     val method
 
     output:
-    tuple val(meta), path("*.tsv"), emit: tsv
+    tuple val(meta), path("*_ngsbits_sex.tsv"), emit: tsv
+    path("*_ngsbits_sex_mqc.tsv"), emit: mqc_tsv
     tuple val("${task.process}"), val('ngsbits'), eval("SampleGender --version  2>&1 | sed 's/SampleGender //'"), topic: versions, emit: versions_ngsbits
 
     when:
@@ -36,11 +37,27 @@ process NGSBITS_SAMPLEGENDER {
         -out ${prefix}.tsv \\
         ${ref} \\
         ${args}
+
+    {
+        echo "# id: 'ngsbits_samplegender'"
+        echo "# section_name: 'ngs-bits SampleGender'"
+        echo "# description: 'Sample sex inferred from X/Y chromosome coverage ratio, used to set ExpansionHunter ploidy assumptions.'"
+        echo "# plot_type: 'table'"
+        echo "# pconfig:"
+        echo "#     id: 'ngsbits_samplegender_table'"
+        echo "#     title: 'ngs-bits: SampleGender'"
+        echo "#     namespace: 'ngsbits'"
+        awk -F'\\t' -v OFS='\\t' -v sample="${meta.id}" '
+            NR==1 { sub(/^#/, ""); \$1 = "Sample"; print; next }
+            { \$1 = sample; print }
+        ' ${prefix}.tsv
+    } > ${prefix}_mqc.tsv
     """
 
     stub:
     def prefix = task.ext.prefix ?: "${meta.id}_ngsbits_sex"
     """
     touch ${prefix}.tsv
+    touch ${prefix}_mqc.tsv
     """
 }

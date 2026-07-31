@@ -1,3 +1,2 @@
-sampleID,bam,bai,species,is_human
-sample_human,/path/to/sample_human.bam,/path/to/sample_human.bam.bai,Homo sapiens,true
-sample_mouse,/path/to/sample_mouse.bam,/path/to/sample_mouse.bam.bai,Mus musculus,false
+sampleID,bam,sex
+FR07887151,/scratch/er01/PIPE-7729-wes-wgs/2607_wgs_n133/results/bams/FR07887151/FR07887151_markdup.bam,

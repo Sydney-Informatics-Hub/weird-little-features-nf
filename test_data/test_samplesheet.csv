@@ -1,2 +1,0 @@
-sampleID,bam,bai,species,is_human
-earlycasualcaiman,/scratch/er01/gs5517/tests/Weird-little-features-nf/test_data/earlycasualcaiman_markdup.bam,/scratch/er01/gs5517/tests/Weird-little-features-nf/test_data/earlycasualcaiman_markdup.bam.bai,Homo sapiens,true
