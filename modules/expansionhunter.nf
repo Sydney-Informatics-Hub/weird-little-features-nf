@@ -14,8 +14,7 @@ process EXPANSIONHUNTER {
 
     output:
     tuple val(meta), path("${meta.id}.eh.vcf"),  emit: vcf
-    //tuple val(meta), path("${meta.id}.eh.json"), emit: json
-    tuple val("${task.process}"), val('expansionhunter'), eval("ExpansionHunter --version 2>&1 | grep -o 'v[0-9][0-9.]*' | head -1 | sed 's/^v//'"), topic: versions, emit: versions_eh
+    tuple val(meta), path("${meta.id}.eh.json"), emit: json
 
     script:
     """

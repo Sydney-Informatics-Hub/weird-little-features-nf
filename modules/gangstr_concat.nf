@@ -14,7 +14,6 @@ process GANGSTR_CONCAT {
 
     output:
     tuple val(meta), path("${meta.id}.gangstr.vcf"), emit: vcf
-    tuple val("${task.process}"), val('bcftools'), eval("bcftools --version 2>&1 | head -1 | sed 's/^bcftools //'"), topic: versions, emit: versions_bcftools
 
     script:
     """

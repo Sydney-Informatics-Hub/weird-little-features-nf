@@ -2,14 +2,13 @@
 // per-locus threshold data nested under "Diseases") into the flat
 // schema Stranger's --repeats-file expects (NormalMax/PathologicMin
 // directly on the locus). Loci with no usable threshold data are
-// dropped — Stranger can't annotate them either way.
+// dropped, Stranger can't annotate them either way.
 //
 // Loci with more than one disease entry are split into one row per
 // disease (LocusId suffixed _1, _2, ...) since Stranger's schema only
 // supports a single threshold pair per LocusId.
 
 process CONVERT_STRANGER_CATALOG {
-    tag "convert"
     publishDir "${params.outdir}/repeat_expansions/stranger", mode: 'copy'
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/55/55a349b5b0e3d7b9421bd7bde8f19037ef1cd974eb675c660084c9636a26002f/data':
