@@ -3,6 +3,11 @@
 // GangSTR has no multithreading option, so it's scattered one chromosome
 // per task (--chrom) instead — see subworkflows/repeat_expansions.nf,
 // which gathers the per-chromosome VCFs back together afterwards.
+//
+// --numbstrap is left at GangSTR's default (bootstrap resampling to
+// compute REPCI) rather than 0 — without it REPCI collapses to 0-0,0-0
+// for every call, which makes dumpSTR's --gangstr-filter-badCI (see
+// modules/dumpstr.nf) reject every call regardless of genotype.
 
 process GANGSTR {
     tag "${meta.id}:${chrom}"
@@ -27,7 +32,6 @@ process GANGSTR {
         --chrom ${chrom} \\
         --out ${meta.id}.${chrom}.gangstr \\
         --skip-qscore \\
-        --numbstrap 0 \\
         --verbose
     """
 
