@@ -72,5 +72,5 @@ workflow SEX_CHECK {
 
     emit:
     bam            = ch_known.mix( ch_resolved )        // tuple val(meta), path(bam), path(bai) — meta.sex always 'male' or 'female'
-    samplegender_tsv = NGSBITS_SAMPLEGENDER.out.mqc_tsv  // path(*_ngsbits_sex_mqc.tsv) — custom_content, for MultiQC
+    samplegender_tsv = NGSBITS_SAMPLEGENDER.out.tsv.map { _meta, tsv -> tsv }  // path(*_ngsbits_sex.tsv) — for MultiQC
 }

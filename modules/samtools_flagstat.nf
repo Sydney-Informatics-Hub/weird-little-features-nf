@@ -11,7 +11,6 @@ process SAMTOOLS_FLAGSTAT {
 
     output:
     path("*.flagstat"), emit: flagstat
-    tuple val("${task.process}"), val('samtools'), eval("samtools --version 2>&1 | head -1 | sed 's/^samtools //'"), topic: versions, emit: versions_samtools
 
     script:
     """

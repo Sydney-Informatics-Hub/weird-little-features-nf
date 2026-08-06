@@ -27,8 +27,6 @@ workflow REPEAT_EXPANSIONS {
     ch_eh_vcf       = Channel.empty()
     ch_gangstr_vcf  = Channel.empty()
     ch_stranger_vcf = Channel.empty()
-    ch_stranger_mqc = Channel.empty()
-    ch_dumpstr_mqc  = Channel.empty()
 
     // ---------------------------------------------------------------
     // ExpansionHunter + Stranger
@@ -58,7 +56,6 @@ workflow REPEAT_EXPANSIONS {
 
         STRANGER( ch_eh_vcf, ch_stranger_catalog )
         ch_stranger_vcf = STRANGER.out.vcf
-        ch_stranger_mqc = STRANGER.out.mqc_status
     } else {
         log.warn "REPEAT_EXPANSIONS: --catalog not provided — ExpansionHunter and Stranger will be skipped. " +
                  "No standard catalog exists for non-human species; supply a custom catalog JSON to enable these tools."
@@ -84,7 +81,6 @@ workflow REPEAT_EXPANSIONS {
         // TRTools dumpSTR "Level 1" QC filters — see modules/dumpstr.nf
         DUMPSTR( GANGSTR_CONCAT.out.vcf )
         ch_gangstr_vcf = DUMPSTR.out.vcf
-        ch_dumpstr_mqc = DUMPSTR.out.mqc_samplog.mix( DUMPSTR.out.mqc_loclog )
     } else {
         log.warn "REPEAT_EXPANSIONS: --ref_str not provided — GangSTR will be skipped. " +
                  "GangSTR ships human STR sets (hg38/hg19) only; provide a custom TSV/BED for non-human genomes."
@@ -100,5 +96,4 @@ workflow REPEAT_EXPANSIONS {
     gangstr_vcf  = ch_gangstr_vcf           // tuple val(meta), path(vcf) — DumpSTR-filtered candidates
     stranger_vcf = ch_stranger_vcf          // tuple val(meta), path(vcf)
     stats        = BCFTOOLS_STATS.out.stats // path(stats)
-    custom_qc    = ch_stranger_mqc.mix( ch_dumpstr_mqc ) // path(*_mqc.tsv) — for MultiQC
 }

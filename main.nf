@@ -126,39 +126,13 @@ workflow {
     REPEAT_EXPANSIONS( SEX_CHECK.out.bam )
 
     // ---------------------------------------------------------------
-    // SOFTWARE VERSIONS — every process reports (process, tool, version)
-    // via `topic: versions`; collected here into one MultiQC custom_content
-    // table. .unique() collapses repeats from scattered processes (e.g.
-    // GangSTR runs once per chromosome per sample).
-    // ---------------------------------------------------------------
-    ch_versions_mqc = Channel.topic('versions')
-        .map { process, tool, version -> "${process}\t${tool}\t${version}" }
-        .unique()
-        .collectFile(
-            name: 'software_versions_mqc.tsv',
-            newLine: true,
-            sort: true,
-            seed: '''# id: 'software_versions'
-# section_name: 'Pipeline Software Versions'
-# description: 'Versions of every tool invoked by this pipeline, one row per process.'
-# plot_type: 'table'
-# pconfig:
-#     id: 'software_versions_table'
-#     title: 'Pipeline Software Versions'
-#     namespace: 'software_versions'
-Process\tTool\tVersion'''
-        )
-
-    // ---------------------------------------------------------------
     // MULTIQC — summary stats report from BAM QC, sex check, and
     // bcftools stats across all repeat expansion VCFs
     // ---------------------------------------------------------------
     ch_multiqc_files = SAMTOOLS_FLAGSTAT.out.flagstat
         .mix(
             SEX_CHECK.out.samplegender_tsv,
-            REPEAT_EXPANSIONS.out.stats,
-            REPEAT_EXPANSIONS.out.custom_qc,
-            ch_versions_mqc
+            REPEAT_EXPANSIONS.out.stats
         )
         .collect()
 

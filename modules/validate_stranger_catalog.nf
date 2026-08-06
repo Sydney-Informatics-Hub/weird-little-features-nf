@@ -6,7 +6,6 @@
 // see subworkflows/repeat_expansions.nf.
 
 process VALIDATE_STRANGER_CATALOG {
-    tag "validate"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/55/55a349b5b0e3d7b9421bd7bde8f19037ef1cd974eb675c660084c9636a26002f/data':
         'community.wave.seqera.io/library/stranger_tabix:4b6ab25b5e5e07a6' }"
