@@ -21,8 +21,10 @@ process DUMPSTR {
     tuple val(meta), path(vcf)
 
     output:
-    tuple val(meta), path("${meta.id}.dumpstr.vcf.gz"),     emit: vcf
-    tuple val(meta), path("${meta.id}.dumpstr.vcf.gz.tbi"), emit: tbi
+    tuple val(meta), path("${meta.id}.dumpstr.vcf.gz"),      emit: vcf
+    tuple val(meta), path("${meta.id}.dumpstr.vcf.gz.tbi"),  emit: tbi
+    tuple val(meta), path("${meta.id}.dumpstr.loclog.tab"),  emit: loclog
+    tuple val(meta), path("${meta.id}.dumpstr.samplog.tab"), emit: samplog
 
     script:
     """
@@ -40,6 +42,6 @@ process DUMPSTR {
 
     stub:
     """
-    touch ${meta.id}.dumpstr.vcf.gz ${meta.id}.dumpstr.vcf.gz.tbi
+    touch ${meta.id}.dumpstr.vcf.gz ${meta.id}.dumpstr.vcf.gz.tbi ${meta.id}.dumpstr.loclog.tab ${meta.id}.dumpstr.samplog.tab
     """
 }
