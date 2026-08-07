@@ -23,7 +23,7 @@ def printInfo() {
     =======================================================================================
 
     Created by Georgie Samaha, Sydney Informatics Hub, University of Sydney
-    Find documentation @ https://sydney-informatics-hub.github.io/Nextflow_DSL2_template_guide/
+    Find documentation @ 
     Cite this pipeline @ INSERT DOI
 
     =======================================================================================

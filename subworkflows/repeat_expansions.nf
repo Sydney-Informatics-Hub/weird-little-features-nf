@@ -54,7 +54,7 @@ workflow REPEAT_EXPANSIONS {
         ch_stranger_catalog = CONVERT_STRANGER_CATALOG.out.catalog
             .mix( ch_catalog_branch.ready.map { meta, catalog, _f -> tuple( meta, catalog ) } )
 
-        STRANGER( ch_eh_vcf, ch_stranger_catalog )
+        STRANGER( ch_eh_vcf, ch_stranger_catalog.first() )
         ch_stranger_vcf = STRANGER.out.vcf
     } else {
         log.warn "REPEAT_EXPANSIONS: --catalog not provided — ExpansionHunter and Stranger will be skipped. " +
