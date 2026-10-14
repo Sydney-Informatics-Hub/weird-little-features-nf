@@ -15,6 +15,7 @@ process EXPANSIONHUNTER {
     output:
     tuple val(meta), path("${meta.id}.eh.vcf"),  emit: vcf
     tuple val(meta), path("${meta.id}.eh.json"), emit: json
+    tuple val(meta), path("${meta.id}.realigned.bam"), emit: bam
 
     script:
     """
@@ -29,6 +30,8 @@ process EXPANSIONHUNTER {
 
     stub:
     """
-    touch ${meta.id}.eh.vcf ${meta.id}.eh.json
+    touch ${meta.id}.eh.vcf
+    touch ${meta.id}.eh.json
+    touch ${meta.id}.realigned.bam
     """
 }
