@@ -7,6 +7,7 @@
 //   Stranger        — pathogenicity annotation, run on all samples (human-only database)
 
 include { EXPANSIONHUNTER            } from '../modules/expansionhunter'
+include { SAMTOOLS_SORT_INDEX        } from '../modules/samtools_sort_index'
 include { GANGSTR                    } from '../modules/gangstr'
 include { GANGSTR_CONCAT             } from '../modules/gangstr_concat'
 include { DUMPSTR                    } from '../modules/dumpstr'
@@ -25,6 +26,7 @@ workflow REPEAT_EXPANSIONS {
     ch_ref_fai = Channel.value( file("${params.ref}.fai", checkIfExists: true) )
 
     ch_eh_vcf       = Channel.empty()
+    ch_eh_bam       = Channel.empty()
     ch_gangstr_vcf  = Channel.empty()
     ch_stranger_vcf = Channel.empty()
 
@@ -37,6 +39,9 @@ workflow REPEAT_EXPANSIONS {
 
         EXPANSIONHUNTER( ch_bam, ch_ref, ch_ref_fai, ch_catalog )
         ch_eh_vcf = EXPANSIONHUNTER.out.vcf
+
+        SAMTOOLS_SORT_INDEX( EXPANSIONHUNTER.out.bam )
+        ch_eh_bam = SAMTOOLS_SORT_INDEX.out.bam
 
         // Only catalogs with nested per-disease thresholds (rather than
         // Stranger's expected flat NormalMax/PathologicMin) get converted.
@@ -93,6 +98,7 @@ workflow REPEAT_EXPANSIONS {
 
     emit:
     eh_vcf       = ch_eh_vcf                // tuple val(meta), path(vcf)
+    eh_bam       = ch_eh_bam                // tuple val(meta), path(bam), path(bai) — sorted realigned reads
     gangstr_vcf  = ch_gangstr_vcf           // tuple val(meta), path(vcf) — DumpSTR-filtered candidates
     stranger_vcf = ch_stranger_vcf          // tuple val(meta), path(vcf)
     stats        = BCFTOOLS_STATS.out.stats // path(stats)

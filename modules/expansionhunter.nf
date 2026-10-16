@@ -2,7 +2,8 @@
 
 process EXPANSIONHUNTER {
     tag "${meta.id}"
-    publishDir "${params.outdir}/repeat_expansions/expansionhunter/${meta.id}", mode: 'copy'
+    publishDir "${params.outdir}/repeat_expansions/expansionhunter/${meta.id}", mode: 'copy',
+        saveAs: { fn -> fn.endsWith('.bam') ? null : fn }  // unsorted BAM not published; see SAMTOOLS_SORT_INDEX
     container 'quay.io/biocontainers/expansionhunter:5.0.0--hc26b3af_5'
     label 'medium_job'
 
@@ -15,7 +16,7 @@ process EXPANSIONHUNTER {
     output:
     tuple val(meta), path("${meta.id}.eh.vcf"),  emit: vcf
     tuple val(meta), path("${meta.id}.eh.json"), emit: json
-    tuple val(meta), path("${meta.id}.realigned.bam"), emit: bam
+    tuple val(meta), path("${meta.id}.eh_realigned.bam"), emit: bam
 
     script:
     """
@@ -32,6 +33,6 @@ process EXPANSIONHUNTER {
     """
     touch ${meta.id}.eh.vcf
     touch ${meta.id}.eh.json
-    touch ${meta.id}.realigned.bam
+    touch ${meta.id}.eh_realigned.bam
     """
 }
